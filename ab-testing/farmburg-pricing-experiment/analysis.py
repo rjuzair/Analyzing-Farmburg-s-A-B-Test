@@ -1,61 +1,62 @@
-# Import libraries
-import codecademylib3
-import pandas as pd
+"""FarmBurg pricing experiment.
+
+Three groups were offered an in-game upgrade at different price points
+(A = $0.99, B = $1.99, C = $4.99). The goal is to find which price point
+reliably clears a $1,000/week revenue target.
+
+Data: data/clicks.csv with columns user_id, group, is_purchase ('Yes'/'No').
+"""
+from pathlib import Path
+
 import numpy as np
+import pandas as pd
 from scipy import stats
 
-# Read in the `clicks.csv` file as `abdata`
-abdata = pd.read_csv('clicks.csv')
+DATA = Path(__file__).parent / "data" / "clicks.csv"
+WEEKLY_TARGET = 1000
+PRICES = {"A": 0.99, "B": 1.99, "C": 4.99}
+ALPHA = 0.05
 
-#1 - 
-#print(abdata.head())
-Xtab = pd.crosstab(abdata.group, abdata.is_purchase)
-#print(Xtab)
-chi2, pval, dof, expected = stats.chi2_contingency(Xtab)
-print(pval)
-print('Yes, there is significant differece')
 
-#4 - 7
-num_visitors = len(abdata)
-#print(num_visitors)
-num_sales_needed_099 = np.ceil(1000 / 0.99)
-#print(num_sales_needed_099)
-p_sales_needed_099 = (num_sales_needed_099 / num_visitors)  
-print(p_sales_needed_099)
+def main():
+    abdata = pd.read_csv(DATA)
 
-num_sales_needed_199 = np.ceil(1000 / 1.99)
-#print(num_sales_needed_099)
-p_sales_needed_199 = (num_sales_needed_199 / num_visitors)  
-print(p_sales_needed_199)
+    # 1. Is purchase rate associated with group? (chi-square test of independence)
+    xtab = pd.crosstab(abdata.group, abdata.is_purchase)
+    print(xtab, "\n")
+    _, pval, _, _ = stats.chi2_contingency(xtab)
+    print(f"Chi-square p-value: {pval:.3g} -> "
+          f"{'significant' if pval < ALPHA else 'not significant'} difference in purchase rate\n")
 
-num_sales_needed_499 = np.ceil(1000 / 4.99)
-#print(num_sales_needed_099)
-p_sales_needed_499 = (num_sales_needed_499 / num_visitors)  
-print(p_sales_needed_499)
+    # 2. A higher purchase rate does not mean higher revenue. For each price,
+    #    test whether the observed purchase rate beats the rate needed to hit
+    #    the weekly revenue target (one-sided binomial test).
+    num_visits = len(abdata)
+    print(f"Weekly visitors: {num_visits}\n")
 
-#8 -
-samp_size_099 = np.sum(abdata.group == 'A')
-#print(samp_size_099)
-sales_099 = np.sum((abdata.group == 'A') & (abdata.is_purchase == 'Yes'))
-#print(sales_099)
+    viable = []
+    for group, price in PRICES.items():
+        sales_needed = np.ceil(WEEKLY_TARGET / price)
+        p_needed = sales_needed / num_visits
 
-pvalA = stats.binom_test(sales_099, n = samp_size_099, p = p_sales_needed_099, alternative = 'greater')
-print(pvalA)
+        in_group = abdata.group == group
+        samp_size = int(in_group.sum())
+        sales = int((in_group & (abdata.is_purchase == "Yes")).sum())
 
-samp_size_199 = np.sum(abdata.group == 'B')
-#print(samp_size_199)
-sales_199 = np.sum((abdata.group == 'B') & (abdata.is_purchase == 'Yes'))
-#print(sales_199)
+        result = stats.binomtest(sales, n=samp_size, p=p_needed, alternative="greater")
+        print(f"Group {group} (${price}): needs {p_needed:.2%} conversion, "
+              f"observed {sales / samp_size:.2%}, p = {result.pvalue:.4f}")
+        if result.pvalue < ALPHA:
+            viable.append((group, price))
 
-pvalB = stats.binom_test(sales_199, n = samp_size_199, p = p_sales_needed_199, alternative = 'greater')
-print(pvalB)
+    print()
+    if viable:
+        best = max(viable, key=lambda gp: gp[1])
+        print(f"Price points significantly above break-even: {[g for g, _ in viable]}")
+        print(f"Recommendation: charge ${best[1]} (group {best[0]}), the highest viable price")
+    else:
+        print("No price point is significantly above the break-even conversion rate.")
 
-samp_size_499 = np.sum(abdata.group == 'C')
-#print(samp_size_499)
-sales_499 = np.sum((abdata.group == 'C') & (abdata.is_purchase == 'Yes'))
-#print(sales_499)
 
-pvalC = stats.binom_test(sales_499, n = samp_size_499, p = p_sales_needed_499, alternative = 'greater')
-print(pvalC)
-
-print("based on calculations only Group C value is significant so, Brian should charge $4.99 for upgrade to meet the $1000 targets")
+if __name__ == "__main__":
+    main()

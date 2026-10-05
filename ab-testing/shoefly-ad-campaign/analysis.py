@@ -1,68 +1,47 @@
-import codecademylib
+"""ShoeFly.com - ad campaign funnel and A/B test.
+
+Which traffic source drives the most ad views and clicks, and does Ad A or
+Ad B earn a higher click-through rate across the week?
+
+Data: data/ad_clicks.csv with columns user_id, utm_source, day,
+ad_click_timestamp, experimental_group.
+"""
+from pathlib import Path
+
 import pandas as pd
 
-ad_clicks = pd.read_csv('ad_clicks.csv')
-print(ad_clicks.head())
+DATA = Path(__file__).parent / "data" / "ad_clicks.csv"
 
 
-source = ad_clicks.groupby('utm_source').user_id.count().reset_index()
-print(source)
+def click_rate(df, by):
+    """Return clicks, views and click-through rate (%) grouped by `by`."""
+    pivot = (df.groupby([by, "is_click"]).user_id.count()
+               .unstack("is_click", fill_value=0))
+    pivot["views"] = pivot[True] + pivot[False]
+    pivot["percent_clicked"] = pivot[True] / pivot["views"] * 100
+    return pivot.rename(columns={True: "clicked", False: "not_clicked"})
 
-ad_clicks["is_click"] = ~ad_clicks.ad_click_timestamp.isnull()
-print(ad_clicks)
 
-click_by_source = ad_clicks.groupby(['utm_source', 'is_click']).user_id.count().reset_index()
-print(click_by_source)
+def main():
+    ad_clicks = pd.read_csv(DATA)
+    ad_clicks["is_click"] = ad_clicks.ad_click_timestamp.notnull()
 
-clicks_pivot = click_by_source.pivot(
-  columns = 'is_click',
-  index = 'utm_source',
-  values = 'user_id'
-).reset_index()
-print(clicks_pivot)
+    print("Views by traffic source:")
+    print(ad_clicks.groupby("utm_source").user_id.count().sort_values(ascending=False), "\n")
 
-clicks_pivot["percent_clicked"] = (clicks_pivot[True]/(clicks_pivot[True]+clicks_pivot[False])) * 100
-print(clicks_pivot)
+    print("Click-through rate by traffic source:")
+    print(click_rate(ad_clicks, "utm_source").round(2), "\n")
 
-users = ad_clicks.groupby("experimental_group").user_id.count().reset_index()
-print(users)
+    print("Users per experimental group:")
+    print(ad_clicks.groupby("experimental_group").user_id.count(), "\n")
 
-users_clicks = ad_clicks.groupby(["experimental_group", "is_click"]).user_id.count().reset_index()
-#print(users_clicks)
-users_clicks_pivot = users_clicks.pivot(
-  columns = 'is_click',
-  index ='experimental_group',
-  values = 'user_id'
-).reset_index()
-#print(users_clicks_pivot)
-users_clicks_pivot['percent_clicked'] = (users_clicks_pivot[True]/users_clicks_pivot[True] + users_clicks_pivot[False]) * 100
-print(users_clicks_pivot)
+    print("Click-through rate by ad:")
+    print(click_rate(ad_clicks, "experimental_group").round(2), "\n")
 
-a_clicks = ad_clicks.loc[ad_clicks.experimental_group == 'A']
-b_clicks = ad_clicks.loc[ad_clicks.experimental_group == 'B']
-print(a_clicks)
-print(b_clicks)
+    for group in ("A", "B"):
+        print(f"Ad {group} click-through rate by day:")
+        print(click_rate(ad_clicks[ad_clicks.experimental_group == group], "day").round(2), "\n")
 
-a_clicks_user = a_clicks.groupby(['day', 'is_click']).user_id.count().reset_index()
-#print(a_clicks_user)
-a_clicks_percent = a_clicks_user.pivot(
-  columns = 'is_click',
-  index = 'day',
-  values = 'user_id'
-).reset_index()
-#print(a_clicks_percent)
-a_clicks_percent["percent_clicked"] = (a_clicks_percent[True]/a_clicks_percent[True] + a_clicks_percent[False]) * 100
-print(a_clicks_percent)
 
-b_clicks_user = b_clicks.groupby(['day', 'is_click']).user_id.count().reset_index()
-#print(b_clicks_user)
-b_clicks_percent = b_clicks_user.pivot(
-  columns = 'is_click',
-  index = 'day',
-  values = 'user_id'
-).reset_index()
-#print(b_clicks_percent)
-b_clicks_percent["percent_clicked"] = (b_clicks_percent[True]/b_clicks_percent[True] + b_clicks_percent[False]) * 100
-print(b_clicks_percent)
-
-#based on my analysis i would recommend Ad B.
+if __name__ == "__main__":
+    main()
